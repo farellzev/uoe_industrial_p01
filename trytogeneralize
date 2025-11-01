@@ -55,3 +55,32 @@ def run_diffusion_experiment(N_steps, M_steps, D_coeff, T_end=20, sim_start_time
     plt.show()
     
     return solution, ax
+
+#ammonia data free to change
+N_exp1 = 1000
+M_exp1 = 1000
+D_exp1 = 0.0000228
+T_exp1 = 20
+start_exp1 = 0.01
+
+# Tentukan scrubber
+scrubbers_exp1 = [
+    {'k_s': 50, 'pos': 0.4},
+    {'k_s': 50, 'pos': -0.4}
+]
+
+plot_times_exp1 = [100]
+
+threshold_lines = {
+    "critical threshold": 0.000209,
+    "detector starts working": 1/100
+}
+
+sol_matrix, plot_ax = run_diffusion_experiment(
+    N_exp1, M_exp1, D_exp1, 
+    T_end=T_exp1, 
+    sim_start_time=start_exp1,
+    scrubber_details=scrubbers_exp1, 
+    plot_time_indices=plot_times_exp1,
+    thresholds=threshold_lines
+)
