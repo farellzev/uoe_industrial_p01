@@ -1,0 +1,121 @@
+# --- Core Function (Experiment + Metrics) ---
+
+def construct_original_A(M_local, C_local):
+    """Constructs the coefficient matrix A given the parameters."""
+    main_diag = np.array(([1+2*C_local] * (M_local+1)))
+    super_diag = np.array([-2*C_local] + ([-C_local] * (M_local-1)))
+    sub_diag = np.array(([-C_local]*(M_local-1)) + [-2*C_local])
+    A = diags_array([main_diag, super_diag, sub_diag], offsets = [0, 1, -1], format = 'csr')
+    return A
+
+def run_simulation_for_metrics(N_steps, M_steps, D_coeff, T_end, 
+                             sim_start_time, scrubber_details, 
+                             x_critical, C_hazardous, C_detector):
+    """
+    Runs the 1D simulation and returns key metrics t* (critical time) and 
+    x_max (max distance).
+    
+    NOTE: This function sets global variables (N, M, T, etc.)
+    because the helper functions (solve_diffusion, find_first_t, etc.) 
+    from your notebook depend on them.
+    """
+    
+    # Set globals required by the notebook's helper functions
+    global N, M, T, start_time, x, t, dx, dt, C, analytic_truncate
+    N, M, D, T, start_time = N_steps, M_steps, D_coeff, T_end, sim_start_time
+    
+    # --- Setup ---
+    # Set default analytic_truncate if it doesn't exist
+    if 'analytic_truncate' not in globals():
+        analytic_truncate = int(1e4)
+
+    x = np.linspace(-1, 1, M + 1)
+    t = np.linspace(start_time, T, N + 1)
+    dx = x[1] - x[0]
+    dt = t[1] - t[0]
+    C = (D * dt) / (dx**2)
+
+    # --- Create Matrix A ---
+    A_sim = construct_original_A(M, C)
+    if scrubber_details:
+        for scrub in scrubber_details:
+            A_sim = add_scrubbers(A_sim, dt, dx, 
+                                  scrub['k_s'], 
+                                  scrub['pos'], 
+                                  scrub.get('w', 0.1))
+
+    # --- Solve ---
+    # Suppress warnings from spsolve for smaller N
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        # solve_diffusion uses global N, M, analytic_truncate, start_time
+        solution = solve_diffusion(N, M, A_sim)
+
+    # --- Calculate Metrics ---
+    # find_first_t & find_largest_x use global x, t
+    t_star_index, t_star = find_first_t(solution, x_critical, C_hazardous)
+    
+    if t_star_index == -1: # If threshold not reached
+        return (N, dt, None, None)
+
+    x_max_array = find_largest_x(solution, t_star_index, C_detector)
+    
+    # Get scalar value for easy comparison
+    x_max = x_max_array[0] if x_max_array.size > 0 else None 
+
+    return (N, dt, t_star, x_max)
+
+# --- Convergence Test Loop ---
+
+# 1. Define Constant Parameters 
+M_const = 1000
+D_const = 0.000209
+T_const = 20
+start_time_const = 0.01
+
+scrubbers_const = [
+    {'k_s': 50, 'pos': 0.2},
+    {'k_s': 50, 'pos': -0.2}
+]
+
+# 2. Define Metric Parameters
+x_crit = -0.5       # x*
+C_haz = 0.000209      # C_hazard*
+C_det = 0.01        # C_detector* (C0 / 100)
+
+# 3. Vary N (as you suggested)
+N_values_to_test = [1000, 2000, 5000, 10000]
+results = []
+
+# --- Print Statements ---
+print(f"Starting Convergence Test for M={M_const}, D={D_const}, T={T_const}")
+print("-" * 60)
+
+for n_test in N_values_to_test:
+    print(f"Running simulation with N = {n_test}...")
+    
+    # Call the core function
+    result = run_simulation_for_metrics(
+        n_test, M_const, D_const, T_const, 
+        start_time_const, scrubbers_const,
+        x_crit, C_haz, C_det
+    )
+    results.append(result)
+    print("Done.")
+
+# --- 4. Display Results ---
+print("\n" + "=" * 60)
+print("         CONVERGENCE (PRECISION) TEST RESULTS")
+print("=" * 60)
+print(f"Test Parameters: x* = {x_crit}, C_hazard* = {C_haz}, C_detector* = {C_det}")
+print("-" * 60)
+print(f"{'N (Time Steps)':<20} | {'dt (Step Size)':<19} | {'t* (Critical Time)':<19} | {'x_max (Max Distance)':<19}")
+print(f"{'-'*20:s}-+-{'-'*19:s}-+-{'-'*19:s}-+-{'-'*19:s}")
+
+for res in results:
+    N_val, dt_val, t_star_val, x_max_val = res
+    # Format output
+    dt_str = f"{dt_val:.6f}"
+    t_star_str = f"{t_star_val:.6f}" if t_star_val is not None else "N/A"
+    x_max_str = f"{x_max_val:.6f}" if x_max_val is not None else "N/A"
+    print(f"{N_val:<20} | {dt_str:<19} | {t_star_str:<19} | {x_max_str:<19}")
