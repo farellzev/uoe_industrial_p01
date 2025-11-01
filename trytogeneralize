@@ -1,0 +1,57 @@
+def run_diffusion_experiment(N_steps, M_steps, D_coeff, T_end=20, sim_start_time=0.01, scrubber_details=None, plot_time_indices=None, thresholds=None):
+
+#constructs the coefficient matrix A given the parameters
+    def construct_original_A(M, C):
+        main_diag = np.array(([1+2*C] * (M+1)))
+        super_diag = np.array([-2*C] + ([-C] * (M-1)))
+        sub_diag = np.array(([-C]*(M-1)) + [-2*C])
+        A = diags_array([main_diag, super_diag, sub_diag], offsets = [0, 1, -1], format = 'csr')
+        return A
+    
+    #global parameter
+    global N, M, T, start_time, x, t, dx, dt, C
+    N = N_steps
+    M = M_steps
+    D = D_coeff
+    T = T_end
+    start_time = sim_start_time
+
+    #setup simulation arrays based on parameters
+    x = np.linspace(-1, 1, M + 1)
+    t = np.linspace(start_time, T, N + 1)
+
+    dx = x[1] - x[0]
+    dt = t[1] - t[0]
+    
+    #constant in the coefficient matrix
+    C = (D * dt) / (dx**2)
+
+    #construct coefficient matrix
+    A_sim = construct_original_A(M, C)
+    
+    #add scrubbers
+    if scrubber_details:
+        for scrub in scrubber_details:
+            A_sim = add_scrubbers(A_sim, dt, dx, scrub['k_s'], scrub['pos'], scrub.get('w', 0.1))
+
+    solution = solve_diffusion(N, M, A_sim)
+
+    #plot
+    fig, ax = plt.subplots(1, 1, figsize=(10, 4))
+    
+    if plot_time_indices is None:
+        plot_time_indices = [N // 50] 
+    
+    plot_numeric(x, solution, ax, times=plot_time_indices)
+    
+    #add threshold lines
+    if thresholds:
+        for label, value in thresholds.items():
+            ax.plot(x, [value] * len(x), linestyle="dashed", label=label)
+    
+    ax.legend(loc="best")
+    ax.set_title(f"1D Diffusion (N={N}, M={M}, D={D}) with {len(scrubber_details) if scrubber_details else 0} scrubber(s)")
+    
+    plt.show()
+    
+    return solution, ax
